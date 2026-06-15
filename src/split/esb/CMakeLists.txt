@@ -4,8 +4,17 @@
 zephyr_library()
 
 zephyr_library_sources( common.c )
-zephyr_library_sources_ifdef(CONFIG_ZMK_SPLIT_ROLE_CENTRAL  central.c)
-zephyr_library_sources_ifndef(CONFIG_ZMK_SPLIT_ROLE_CENTRAL peripheral.c)
+# message(STATUS "11111 ZMK Split role: ${CONFIG_ZMK_SPLIT_ROLE}")
+# zephyr_library_sources_ifdef(CONFIG_ZMK_SPLIT_ROLE_CENTRAL  central.c)
+# zephyr_library_sources_ifndef(CONFIG_ZMK_SPLIT_ROLE_CENTRAL peripheral.c)
+
+if(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
+    message(STATUS "=====1111 BUILDING SPLIT CENTRAL =====")
+    zephyr_library_sources(central.c)
+else()
+    message(STATUS "=====2222 BUILDING SPLIT PERIPHERAL =====")
+    zephyr_library_sources(peripheral.c)
+endif()
 
 # zephyr_include_directories(${ZEPHYR_CURRENT_MODULE_DIR}/include)
 zephyr_include_directories(${APPLICATION_SOURCE_DIR}/include)

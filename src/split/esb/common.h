@@ -13,7 +13,8 @@
 #include "app_esb.h"
 
 #define ZMK_SPLIT_ESB_ENVELOPE_MAGIC_PREFIX "ZmKe"
-
+// #define CONFIG_ESB_MAX_PAYLOAD_LENGTH 48
+// #define CONFIG_ESB_PIPE_COUNT 2
 struct esb_msg_prefix {
     uint8_t magic_prefix[sizeof(ZMK_SPLIT_ESB_ENVELOPE_MAGIC_PREFIX) - 1];
     uint8_t payload_size;

@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <zephyr/types.h>
 #include <zephyr/init.h>
+#include <zephyr/types.h>
 
 #include <zephyr/settings/settings.h>
 #include <zephyr/sys/crc.h>
@@ -15,17 +15,17 @@
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_SPLIT_ESB_LOG_LEVEL);
 
-#include <zmk/stdlib.h>
 #include <zmk/behavior.h>
-#include <zmk/sensors.h>
-#include <zmk/split/transport/peripheral.h>
-#include <zmk/split/transport/types.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/position_state_changed.h>
 #include <zmk/events/sensor_event.h>
-#include <zmk/pointing/input_split.h>
 #include <zmk/hid_indicators_types.h>
 #include <zmk/physical_layouts.h>
+#include <zmk/pointing/input_split.h>
+#include <zmk/sensors.h>
+#include <zmk/split/transport/peripheral.h>
+#include <zmk/split/transport/types.h>
+#include <zmk/stdlib.h>
 
 #include "app_esb.h"
 #include "common.h"
@@ -33,7 +33,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_SPLIT_ESB_LOG_LEVEL);
 #define TX_BUFFER_SIZE (sizeof(struct esb_event_envelope) + sizeof(struct esb_msg_postfix) + sizeof(struct esb_msg_meta))
 #define RX_BUFFER_SIZE (sizeof(struct esb_command_envelope) + sizeof(struct esb_msg_postfix))
 
-RING_BUF_DECLARE(tx_buf, TX_BUFFER_SIZE * CONFIG_ZMK_SPLIT_ESB_EVENT_BUFFER_ITEMS);
+RING_BUF_DECLARE(tx_buf, TX_BUFFER_SIZE *CONFIG_ZMK_SPLIT_ESB_EVENT_BUFFER_ITEMS);
 
 #define RX_RING_BUF_SIZE (RX_BUFFER_SIZE * CONFIG_ZMK_SPLIT_ESB_CMD_BUFFER_ITEMS)
 struct ring_buf rx_bufs[CONFIG_ESB_PIPE_COUNT];
@@ -50,13 +50,9 @@ static struct zmk_split_esb_state state = {
     .rx_bufs = rx_bufs,
 };
 
-static void begin_tx(void) {
-    zmk_split_esb_tx(&state);
-}
+static void begin_tx(void) { zmk_split_esb_tx(&state); }
 
-void zmk_split_esb_on_ptx_esb_callback(app_esb_event_t *event) {
-    zmk_split_esb_cb(event, &state);
-}
+void zmk_split_esb_on_ptx_esb_callback(app_esb_event_t *event) { zmk_split_esb_cb(event, &state); }
 
 static ssize_t get_payload_data_size(const struct zmk_split_transport_peripheral_event *evt) {
     switch (evt->type) {
@@ -88,34 +84,41 @@ static uint8_t get_retry_count(const struct zmk_split_transport_peripheral_event
     }
 }
 
-static int
-split_peripheral_esb_report_event(const struct zmk_split_transport_peripheral_event *event) {
+static int split_peripheral_esb_report_event(const struct zmk_split_transport_peripheral_event *event) {
     ssize_t data_size = get_payload_data_size(event);
     if (data_size < 0) {
         LOG_WRN("Failed to determine payload data size %d", data_size);
         return data_size;
     }
 
-    size_t payload_size = data_size
-                        + sizeof(peripheral_id)
-                        + sizeof(enum zmk_split_transport_peripheral_event_type);
+    LOG_INF("8888 ===== KEY EVENT =====");
+    LOG_INF("type: %d", event->type);
+    LOG_INF("source: %d", peripheral_id);
+
+    if (event->type == ZMK_SPLIT_TRANSPORT_PERIPHERAL_EVENT_TYPE_KEY_POSITION_EVENT) {
+        LOG_INF("111 position: %d", event->data.key_position_event.position);
+        LOG_INF("222 state: %d", event->data.key_position_event.pressed);
+    }
+    
+    size_t payload_size = data_size + sizeof(peripheral_id) + sizeof(enum zmk_split_transport_peripheral_event_type);
 
     if (ring_buf_space_get(&tx_buf) < ESB_MSG_EXTRA_SIZE + payload_size) {
-        LOG_WRN("No room to send event to the central (have %d but only space for %d/%d)",
-                ESB_MSG_EXTRA_SIZE + payload_size, ring_buf_space_get(&tx_buf),
-                ring_buf_capacity_get(&tx_buf));
+        LOG_WRN("No room to send event to the central (have %d but only space for "
+                "%d/%d)",
+                ESB_MSG_EXTRA_SIZE + payload_size, ring_buf_space_get(&tx_buf), ring_buf_capacity_get(&tx_buf));
         ring_buf_reset(&tx_buf);
         return -ENOSPC;
     }
 
-    struct esb_event_envelope env = {.prefix = {
-                                        .magic_prefix = ZMK_SPLIT_ESB_ENVELOPE_MAGIC_PREFIX,
-                                        .payload_size = payload_size,
-                                    },
-                                    .payload = {
-                                        .source = peripheral_id,
-                                        .event = *event,
-                                    }};
+    struct esb_event_envelope env = {.prefix =
+                                         {
+                                             .magic_prefix = ZMK_SPLIT_ESB_ENVELOPE_MAGIC_PREFIX,
+                                             .payload_size = payload_size,
+                                         },
+                                     .payload = {
+                                         .source = peripheral_id,
+                                         .event = *event,
+                                     }};
 
     size_t evt_env_len = sizeof(env.prefix) + payload_size;
     // LOG_HEXDUMP_DBG(&env, evt_env_len, "ota payload");
@@ -161,8 +164,7 @@ static int split_peripheral_esb_set_enabled(bool enabled) {
     return zmk_split_esb_set_enable(enabled);
 }
 
-static int
-split_peripheral_esb_set_status_callback(zmk_split_transport_peripheral_status_changed_cb_t cb) {
+static int split_peripheral_esb_set_status_callback(zmk_split_transport_peripheral_status_changed_cb_t cb) {
     transport_status_cb = cb;
     return 0;
 }
@@ -182,8 +184,7 @@ static const struct zmk_split_transport_peripheral_api peripheral_api = {
     .get_status = split_peripheral_esb_get_status,
 };
 
-ZMK_SPLIT_TRANSPORT_PERIPHERAL_REGISTER(esb_peripheral, &peripheral_api,
-                                        CONFIG_ZMK_SPLIT_ESB_PRIORITY);
+ZMK_SPLIT_TRANSPORT_PERIPHERAL_REGISTER(esb_peripheral, &peripheral_api, CONFIG_ZMK_SPLIT_ESB_PRIORITY);
 
 static void notify_transport_status(void) {
     if (transport_status_cb) {
@@ -215,8 +216,7 @@ static void process_rx_work_cb(struct k_work *work) {
         struct ring_buf *rx_buf = &state.rx_bufs[pipe];
         while (ring_buf_size_get(rx_buf) > ESB_MSG_EXTRA_SIZE) {
             struct esb_command_envelope env;
-            int item_err = zmk_split_esb_get_item(rx_buf, (uint8_t *)&env,
-                                                  sizeof(struct esb_command_envelope));
+            int item_err = zmk_split_esb_get_item(rx_buf, (uint8_t *)&env, sizeof(struct esb_command_envelope));
             switch (item_err) {
             case 0:
                 if (env.payload.cmd.type == ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_POLL_EVENTS) {
@@ -224,8 +224,7 @@ static void process_rx_work_cb(struct k_work *work) {
                     break;
                 }
                 if (env.payload.source != peripheral_id) {
-                    LOG_WRN("Ignoring command type %d for source %d (expect %d)", 
-                            env.payload.cmd.type, env.payload.source, peripheral_id);
+                    LOG_WRN("Ignoring command type %d for source %d (expect %d)", env.payload.cmd.type, env.payload.source, peripheral_id);
                     break;
                 }
                 zmk_split_transport_peripheral_command_handler(&esb_peripheral, env.payload.cmd);
@@ -242,6 +241,4 @@ static void process_rx_work_cb(struct k_work *work) {
 
 K_WORK_DEFINE(process_rx_work, process_rx_work_cb);
 
-static void process_rx_cb(uint8_t pipe) {
-    k_work_submit(&process_rx_work);
-}
+static void process_rx_cb(uint8_t pipe) { k_work_submit(&process_rx_work); }
