@@ -9,6 +9,7 @@
 
 typedef enum {
   APP_TS_STARTED,
+  APP_TS_TX_STARTED,
   APP_TS_STOPPED
 } zmk_split_esb_timeslot_callback_type_t;
 

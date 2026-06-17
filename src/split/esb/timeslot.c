@@ -53,6 +53,17 @@ static mpsl_timeslot_request_t timeslot_request_earliest = {
     .params.earliest.timeout_us = TIMESLOT_REQUEST_TIMEOUT_US
 };
 
+
+// ⭐ 新增：发送时隙的请求（可以短一点，比如 500us）
+static mpsl_timeslot_request_t tx_timeslot_request = {
+    .request_type = MPSL_TIMESLOT_REQ_TYPE_EARLIEST,
+    .params.earliest.hfclk = MPSL_TIMESLOT_HFCLK_CFG_NO_GUARANTEE,
+    .params.earliest.priority = MPSL_TIMESLOT_PRIORITY_NORMAL,
+    .params.earliest.length_us = 500, 
+    .params.earliest.timeout_us = 100000
+};
+
+
 static mpsl_timeslot_signal_return_param_t signal_callback_return_param;
 
 // Message queue for requesting MPSL API calls to non-preemptible thread
@@ -87,16 +98,24 @@ static void set_timeslot_active_status(bool active) {
         }
     }
 }
-
+uint32_t cnt = 0;
+// ⭐ 新增：状态标记和数据标志
+ volatile bool is_tx_slot = false; // 当前是否是发送时隙
+ volatile bool has_data_to_send = false; // 是否有数据要发给 Dongle
 static mpsl_timeslot_signal_return_param_t *mpsl_timeslot_callback(mpsl_timeslot_session_id_t session_id, 
                                                                   uint32_t signal_type) {
     (void) session_id; // unused parameter
     static bool timeslot_extension_failed;
     // NRF_P0->OUTSET = BIT(28);
+    
     mpsl_timeslot_signal_return_param_t *p_ret_val = NULL;
     switch (signal_type) {
         case MPSL_TIMESLOT_SIGNAL_START:
-            LOG_DBG("TS start");
+            cnt++;
+            if(cnt % 200 == 0){
+                LOG_INF("6666 TS start - Mode: %s", is_tx_slot ? "TX" : "RX");
+            }
+            
             signal_callback_return_param.callback_action = MPSL_TIMESLOT_SIGNAL_ACTION_NONE;
             p_ret_val = &signal_callback_return_param;
 
@@ -116,6 +135,17 @@ static mpsl_timeslot_signal_return_param_t *mpsl_timeslot_callback(mpsl_timeslot
             nrf_timer_cc_set(NRF_TIMER0, NRF_TIMER_CC_CHANNEL1, TIMER_EXPIRY_REQ);
             nrf_timer_int_enable(NRF_TIMER0, NRF_TIMER_INT_COMPARE1_MASK);
 
+
+            
+            // ⭐ 关键：通知 app_esb 当前是 TX 还是 RX 模式
+            if (is_tx_slot) {
+                m_callback(APP_TS_TX_STARTED); // 你需要在 app_esb.h 定义这个新事件s
+                // LOG_INF("6666 m_callback(APP_TS_TX_STARTED)");
+                
+            } else {
+                m_callback(APP_TS_STARTED);
+            }
+
             set_timeslot_active_status(true);
             break;
 
@@ -131,8 +161,22 @@ static mpsl_timeslot_signal_return_param_t *mpsl_timeslot_callback(mpsl_timeslot
                 nrf_timer_int_disable(NRF_TIMER0, NRF_TIMER_INT_COMPARE0_MASK);
                 nrf_timer_event_clear(NRF_TIMER0, NRF_TIMER_EVENT_COMPARE0);
 
-                signal_callback_return_param.callback_action = MPSL_TIMESLOT_SIGNAL_ACTION_EXTEND;
-                signal_callback_return_param.params.extend.length_us = TIMESLOT_LENGTH_US;	
+                // signal_callback_return_param.callback_action = MPSL_TIMESLOT_SIGNAL_ACTION_EXTEND;
+                // signal_callback_return_param.params.extend.length_us = TIMESLOT_LENGTH_US;	
+
+
+                 // ⭐ 修改：如果有数据要发给 Dongle，就不再续期，让时隙自然结束进入 IDLE
+                extern volatile bool has_data_to_send;
+                if (has_data_to_send) {
+                    is_tx_slot = true;
+                    LOG_INF("777 Stop extending RX to switch to TX");
+                    signal_callback_return_param.callback_action = MPSL_TIMESLOT_SIGNAL_ACTION_EXTEND;
+                    signal_callback_return_param.params.extend.length_us = TIMESLOT_LENGTH_US;	
+                } else {
+                    signal_callback_return_param.callback_action = MPSL_TIMESLOT_SIGNAL_ACTION_EXTEND;
+                    signal_callback_return_param.params.extend.length_us = TIMESLOT_LENGTH_US;	
+                }
+
             }
             else if(nrf_timer_event_check(NRF_TIMER0, NRF_TIMER_EVENT_COMPARE1)) {
                 nrf_timer_int_disable(NRF_TIMER0, NRF_TIMER_INT_COMPARE1_MASK);
@@ -231,13 +275,32 @@ static mpsl_timeslot_signal_return_param_t *mpsl_timeslot_callback(mpsl_timeslot
             break;
 
         case MPSL_TIMESLOT_SIGNAL_SESSION_IDLE:
-            LOG_DBG("idle");
+            LOG_INF("idle  9999");
 
             // Request a new timeslot in this case
             schedule_request(REQ_MAKE_REQUEST);
 
             signal_callback_return_param.callback_action = MPSL_TIMESLOT_SIGNAL_ACTION_NONE;
             p_ret_val = &signal_callback_return_param;
+
+// // ⭐ 逻辑：如果刚才有数据收到，下一个时隙就切到 TX
+//             if (has_data_to_send && !is_tx_slot) {
+//                 // LOG_INF("Switch to TX 8888");
+//                 is_tx_slot = true;
+//                 has_data_to_send = false; // 消费掉标志
+//                 // schedule_request(REQ_MAKE_REQUEST); // 触发新的请求
+//                 signal_callback_return_param.params.request.p_next = &timeslot_request_earliest;
+//                 signal_callback_return_param.callback_action = MPSL_TIMESLOT_SIGNAL_ACTION_REQUEST;
+//             } 
+//             // 如果刚才已经是 TX 了，或者没数据，就切回 RX
+//             else {
+//                 is_tx_slot = false;
+//                 // schedule_request(REQ_MAKE_REQUEST);
+//                 signal_callback_return_param.params.request.p_next = &timeslot_request_earliest;
+//                 signal_callback_return_param.callback_action = MPSL_TIMESLOT_SIGNAL_ACTION_REQUEST;
+//             }
+
+            // p_ret_val = &signal_callback_return_param;
             set_timeslot_active_status(false);
             break;
 

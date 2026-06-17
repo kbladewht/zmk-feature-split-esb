@@ -81,27 +81,27 @@ void zmk_split_esb_cb(app_esb_event_t *event, struct zmk_split_esb_state *state)
             }
             break;
         case APP_ESB_EVT_RX:
-            // LOG_DBG("ESB RX received: {%d} %d", event->pipe, event->data_length);
+             LOG_DBG("ESB RX received: {%d} %d", event->pipe, event->data_length);
 
-            struct ring_buf *rx_buf = &state->rx_bufs[event->pipe];
+            // struct ring_buf *rx_buf = &state->rx_bufs[event->pipe];
 
-            if (ring_buf_space_get(rx_buf) < event->data_length) {
-                LOG_WRN("No room to receive (have %d but only space for %d/%d)",
-                        event->data_length, ring_buf_space_get(rx_buf), 
-                        ring_buf_capacity_get(rx_buf));
-                break;
-            }
+            // if (ring_buf_space_get(rx_buf) < event->data_length) {
+            //     LOG_WRN("No room to receive (have %d but only space for %d/%d)",
+            //             event->data_length, ring_buf_space_get(rx_buf), 
+            //             ring_buf_capacity_get(rx_buf));
+            //     break;
+            // }
 
-            size_t received = ring_buf_put(rx_buf, event->buf, event->data_length);
-            if (received < event->data_length) {
-                LOG_ERR("RX overrun! %d < %d", received, event->data_length);
-                break;
-            }
+            // size_t received = ring_buf_put(rx_buf, event->buf, event->data_length);
+            // if (received < event->data_length) {
+            //     LOG_ERR("RX overrun! %d < %d", received, event->data_length);
+            //     break;
+            // }
 
-            // LOG_DBG("RX + %3d and now buffer is %3d", received, ring_buf_size_get(&rx_buf));
-            if (state->process_rx_callback) {
-                state->process_rx_callback(event->pipe);
-            }
+            // // LOG_DBG("RX + %3d and now buffer is %3d", received, ring_buf_size_get(&rx_buf));
+            // if (state->process_rx_callback) {
+            //     state->process_rx_callback(event->pipe);
+            // }
 
             break;
         default:
@@ -158,7 +158,7 @@ int zmk_split_esb_get_item(struct ring_buf *rx_buf, uint8_t *env, size_t env_siz
                       read == sizeof(postfix),
                       "Somehow read less of the postfix than we expect from the RX buffer");
 
-        // LOG_HEXDUMP_DBG(&postfix, sizeof(postfix), "postfix");
+        // LOG_HEXDUMP_DBG(&postfix, sizeof(postfix), "postfix"q);
 
         uint32_t crc = crc32_ieee(env, payload_to_read);
 

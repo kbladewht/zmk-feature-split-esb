@@ -70,63 +70,63 @@ static ssize_t get_payload_data_size(const struct zmk_split_transport_central_co
 static int split_central_esb_send_command(uint8_t source,
                                           struct zmk_split_transport_central_command cmd) {
 
-    ssize_t data_size = get_payload_data_size(&cmd);
-    if (data_size < 0) {
-        LOG_WRN("Failed to determine payload data size %d", data_size);
-        return data_size;
-    }
+    // ssize_t data_size = get_payload_data_size(&cmd);
+    // if (data_size < 0) {
+    //     LOG_WRN("Failed to determine payload data size %d", data_size);
+    //     return data_size;
+    // }
 
-    size_t payload_size = data_size
-                        + sizeof(source)
-                        + sizeof(enum zmk_split_transport_central_command_type);
+    // size_t payload_size = data_size
+    //                     + sizeof(source)
+    //                     + sizeof(enum zmk_split_transport_central_command_type);
 
-    if (ring_buf_space_get(&tx_buf) < ESB_MSG_EXTRA_SIZE + payload_size) {
-        LOG_WRN("No room to send command to the peripheral %d (have %d but only space for %d/%d)", 
-                source, ESB_MSG_EXTRA_SIZE + payload_size, ring_buf_space_get(&tx_buf),
-                ring_buf_capacity_get(&tx_buf));
-        ring_buf_reset(&tx_buf);
-        return -ENOSPC;
-    }
+    // if (ring_buf_space_get(&tx_buf) < ESB_MSG_EXTRA_SIZE + payload_size) {
+    //     LOG_WRN("No room to send command to the peripheral %d (have %d but only space for %d/%d)", 
+    //             source, ESB_MSG_EXTRA_SIZE + payload_size, ring_buf_space_get(&tx_buf),
+    //             ring_buf_capacity_get(&tx_buf));
+    //     ring_buf_reset(&tx_buf);
+    //     return -ENOSPC;
+    // }
 
-    struct esb_command_envelope env = {.prefix = {
-                                            .magic_prefix = ZMK_SPLIT_ESB_ENVELOPE_MAGIC_PREFIX,
-                                            .payload_size = payload_size,
-                                        },
-                                        .payload = {
-                                            .source = source,
-                                            .cmd = cmd,
-                                        }};
+    // struct esb_command_envelope env = {.prefix = {
+    //                                         .magic_prefix = ZMK_SPLIT_ESB_ENVELOPE_MAGIC_PREFIX,
+    //                                         .payload_size = payload_size,
+    //                                     },
+    //                                     .payload = {
+    //                                         .source = source,
+    //                                         .cmd = cmd,
+    //                                     }};
 
-    size_t cmd_env_len = sizeof(env.prefix) + payload_size;
-    // LOG_HEXDUMP_DBG(&env, cmd_env_len, "Payload");
+    // size_t cmd_env_len = sizeof(env.prefix) + payload_size;
+    // // LOG_HEXDUMP_DBG(&env, cmd_env_len, "Payload");
 
-    size_t put = ring_buf_put(&tx_buf, (uint8_t *)&env, cmd_env_len);
-    if (put != cmd_env_len) {
-        LOG_WRN("Failed to put the whole message (%d vs %d)", put, cmd_env_len);
-    }
+    // size_t put = ring_buf_put(&tx_buf, (uint8_t *)&env, cmd_env_len);
+    // if (put != cmd_env_len) {
+    //     LOG_WRN("Failed to put the whole message (%d vs %d)", put, cmd_env_len);
+    // }
 
-    struct esb_msg_postfix postfix = {.crc = crc32_ieee((void *)&env, cmd_env_len)};
+    // struct esb_msg_postfix postfix = {.crc = crc32_ieee((void *)&env, cmd_env_len)};
 
-    put = ring_buf_put(&tx_buf, (uint8_t *)&postfix, sizeof(postfix));
-    if (put != sizeof(postfix)) {
-        LOG_WRN("Failed to put the postfix (%d vs %d)", put, sizeof(postfix));
-    }
+    // put = ring_buf_put(&tx_buf, (uint8_t *)&postfix, sizeof(postfix));
+    // if (put != sizeof(postfix)) {
+    //     LOG_WRN("Failed to put the postfix (%d vs %d)", put, sizeof(postfix));
+    // }
 
-    static uint16_t cmd_msg_id = 0;
-    if (++cmd_msg_id >= UINT16_MAX - 1000) {
-        cmd_msg_id = 1;
-    }
-    // LOG_INF("cmd_msg_id: %d", cmd_msg_id);
+    // static uint16_t cmd_msg_id = 0;
+    // if (++cmd_msg_id >= UINT16_MAX - 1000) {
+    //     cmd_msg_id = 1;
+    // }
+    // // LOG_INF("cmd_msg_id: %d", cmd_msg_id);
 
-    uint8_t max_retry = CONFIG_ZMK_SPLIT_ESB_RETRY_CMD;
-    struct esb_msg_meta meta = {.msg_id = cmd_msg_id, .max_retry = max_retry};
+    // uint8_t max_retry = CONFIG_ZMK_SPLIT_ESB_RETRY_CMD;
+    // struct esb_msg_meta meta = {.msg_id = cmd_msg_id, .max_retry = max_retry};
 
-    put = ring_buf_put(&tx_buf, (uint8_t *)&meta, sizeof(meta));
-    if (put != sizeof(meta)) {
-        LOG_WRN("Failed to put the meta (%d vs %d)", put, sizeof(meta));
-    }
+    // put = ring_buf_put(&tx_buf, (uint8_t *)&meta, sizeof(meta));
+    // if (put != sizeof(meta)) {
+    //     LOG_WRN("Failed to put the meta (%d vs %d)", put, sizeof(meta));
+    // }
 
-    begin_tx();
+    // begin_tx();
 
     return 0;
 }
@@ -184,14 +184,17 @@ static void notify_status_work_cb(struct k_work *_work) { notify_transport_statu
 static K_WORK_DEFINE(notify_status_work, notify_status_work_cb);
 
 static int zmk_split_esb_central_init(void) {
+    LOG_INF("2222 sInitializing ESB Central");
     for (int i = 0; i < CONFIG_ESB_PIPE_COUNT; i++) {
         ring_buf_init(&rx_bufs[i], RX_RING_BUF_SIZE, rx_bufs_data[i]);
     }
     int ret = zmk_split_esb_init(APP_ESB_MODE_PRX, zmk_split_esb_on_prx_esb_callback);
     if (ret) {
-        LOG_ERR("zmk_split_esb_init failed (err %d)", ret);
+        LOG_ERR("ccccc ==== szmk_split_esb_init failed (err %d)", ret);
         return ret;
     }
+    split_central_esb_set_enabled(true); 
+
     k_work_submit(&notify_status_work);
     return 0;
 }

@@ -172,53 +172,61 @@ static void event_handler(struct esb_evt const *event) {
         case ESB_EVENT_TX_FAILED:
             LOG_WRN("TX FAILED, tx_attempts: %d", event->tx_attempts);
             // Check retry count for failed message
-            uint8_t retry_left = decrement_retry_by_msg_id(m_current_tx_msg_id);
-            LOG_WRN("Retry left for msg %d: %d", m_current_tx_msg_id, retry_left);
+            // uint8_t retry_left = decrement_retry_by_msg_id(m_current_tx_msg_id);
+            // LOG_WRN("Retry left for msg %d: %d", m_current_tx_msg_id, retry_left);
 
-            // Re-insert failed payload into msgq for retry in next cycle
-            bool dispose_msg = !retry_left;
-            if (retry_left > 0) {
-                struct esb_payload retry_payload;
-                if (get_retry_payload_by_msg_id(m_current_tx_msg_id, &retry_payload)) {
-                    int requeue_ret = k_msgq_put(&m_msgq_tx_payloads, &retry_payload, K_NO_WAIT);
-                    if (requeue_ret == -ENOMSG) {
-                        LOG_WRN("Msgq full, cannot re-queue payload from retry table");
-                        dispose_msg = true;
-                    }
-                } else {
-                    // This should not be called.
-                    LOG_ERR("Failed to get payload form retry table for retry");
-                    dispose_msg = true;
-                }
-            }
-            if (dispose_msg) {
-                // Clear retry entry for the message that should give up retry
-                remove_retry_entry_by_msg_id(m_current_tx_msg_id);
-                m_current_tx_msg_id = 0;
-                LOG_WRN("Disposed payload form retry table after too much fail");
-            }
+            // // Re-insert failed payload into msgq for retry in next cycle
+            // bool dispose_msg = !retry_left;
+            // if (retry_left > 0) {
+            //     struct esb_payload retry_payload;
+            //     if (get_retry_payload_by_msg_id(m_current_tx_msg_id, &retry_payload)) {
+            //         int requeue_ret = k_msgq_put(&m_msgq_tx_payloads, &retry_payload, K_NO_WAIT);
+            //         if (requeue_ret == -ENOMSG) {
+            //             LOG_WRN("Msgq full, cannot re-queue payload from retry table");
+            //             dispose_msg = true;
+            //         }
+            //     } else {
+            //         // This should not be called.
+            //         LOG_ERR("Failed to get payload form retry table for retry");
+            //         dispose_msg = true;
+            //     }
+            // }
+            // if (dispose_msg) {
+            //     // Clear retry entry for the message that should give up retry
+            //     remove_retry_entry_by_msg_id(m_current_tx_msg_id);
+            //     m_current_tx_msg_id = 0;
+            //     LOG_WRN("Disposed payload form retry table after too much fail");
+            // }
 
-            // esb_flush_tx(); // DOUH, had fixed @ 3.1.0-rc1, not ready yet.
-            // Forward an event to the application
-            m_event.evt_type = APP_ESB_EVT_TX_FAIL;
-            m_callback(&m_event);
-            pull_packet_from_tx_msgq();
+            // // esb_flush_tx(); // DOUH, had fixed @ 3.1.0-rc1, not ready yet.
+            // // Forward an event to the application
+            // m_event.evt_type = APP_ESB_EVT_TX_FAIL;
+            // m_callback(&m_event);
+            // pull_packet_from_tx_msgq();
             break;
         case ESB_EVENT_RX_RECEIVED:
-            // LOG_DBG("RX SUCCESS");
+             //LOG_INF("555555 RX SUCCESS");
+             extern  volatile bool has_data_to_send;
+             
             struct esb_payload rx_payload;
             while (esb_read_rx_payload(&rx_payload) == 0) {
-                // LOG_DBG("Chunk %d, pipe: %d, len: %d", 
-                //     rx_payload.pid, rx_payload.pipe, rx_payload.length);
-                uint8_t buf[CONFIG_ESB_MAX_PAYLOAD_LENGTH];
-                memcpy(buf, rx_payload.data, rx_payload.length);
-                // LOG_DBG("Packet len: %d", rx_payload.length);
-                // LOG_HEXDUMP_INF(buf, rx_payload.length, "rx_payload");
-                m_event.evt_type = APP_ESB_EVT_RX;
-                m_event.pipe = rx_payload.pipe;
-                m_event.buf = buf;
-                m_event.data_length = rx_payload.length;
-                m_callback(&m_event);
+               
+
+                if (rx_payload.pipe == 0) {
+                    has_data_to_send = true;
+                     LOG_INF("Chunk %d, pipe: %d, len: %d", rx_payload.pid, rx_payload.pipe, rx_payload.length);
+                    // 打印收到的原始数据（hex 格式）
+                LOG_HEXDUMP_INF(rx_payload.data, rx_payload.length, "RX data");
+                }
+                // uint8_t buf[CONFIG_ESB_MAX_PAYLOAD_LENGTH];
+                // memcpy(buf, rx_payload.data, rx_payload.length);
+                // // LOG_DBG("Packet len: %d", rx_payload.length);
+                // // LOG_HEXDUMP_INF(buf, rx_payload.length, "rx_payload");
+                // m_event.evt_type = APP_ESB_EVT_RX;
+                // m_event.pipe = rx_payload.pipe;
+                // m_event.buf = buf;
+                // m_event.data_length = rx_payload.length;
+                // m_callback(&m_event);
             }
             break;
     }
@@ -263,19 +271,23 @@ static int esb_initialize(app_esb_mode_t mode) {
     config.protocol = ESB_PROTOCOL_ESB_DPL;
     config.retransmit_delay = CONFIG_ZMK_SPLIT_ESB_PROTO_TX_RETRANSMIT_DELAY;
     config.retransmit_count = CONFIG_ZMK_SPLIT_ESB_PROTO_TX_RETRANSMIT_COUNT;
-    config.bitrate = ESB_BITRATE_2MBPS_BLE;
+    config.bitrate = ESB_BITRATE_1MBPS_BLE;
     config.use_fast_ramp_up = true;
+    config.payload_length=0;//后加
     config.event_handler = event_handler;
     config.mode = (mode == APP_ESB_MODE_PTX) ? ESB_MODE_PTX : ESB_MODE_PRX;
     config.tx_mode = ESB_TXMODE_MANUAL_START;
     config.selective_auto_ack = true;
 
+    LOG_DBG("ESB init config.mode %d",config.mode);
     err = esb_init(&config);
-
+    
     if (err) {
         return err;
     }
+esb_enable_pipes(0x03); // 同时开启 Pipe 0 (0x01) 和 Pipe 1 (0x02)
 
+    esb_set_rf_channel(26); 
     err = esb_set_base_address_0(esb_base_addr_0);
     if (err) {
         return err;
@@ -294,6 +306,7 @@ static int esb_initialize(app_esb_mode_t mode) {
     NVIC_SetPriority(RADIO_IRQn, 0);
 
     if (mode == APP_ESB_MODE_PRX) {
+        // LOG_INF("4444 Eesb_start_rx started with mode  %d",config.mode);
         esb_start_rx();
     }
 
@@ -378,7 +391,7 @@ int zmk_split_esb_init(app_esb_mode_t mode, app_esb_callback_t callback) {
     if (ret < 0) {
         return ret;
     }
-    LOG_INF("Timeslothandler init");
+    LOG_INF("111111 Timeslothandler init %d",mode);
     zmk_split_esb_timeslot_init(on_timeslot_start_stop);
     return 0;
 }
@@ -393,17 +406,41 @@ int zmk_split_esb_set_enable(bool enabled) {
         return 0;
     }
 }
-
 int zmk_split_esb_send(app_esb_data_t *tx_packet) {
     int ret = 0;
     struct esb_payload tx_payload;
-    tx_payload.pipe = tx_packet->pipe;
+    // tx_payload.pipe = tx_packet->pipe;
+    tx_payload.pipe = 0;
+    LOG_INF("22222 TX pipe: %d, len: %d", tx_payload.pipe, tx_payload.length);
 #if IS_ENABLED(CONFIG_ZMK_SPLIT_ESB_PROTO_TX_ACK)
     tx_payload.noack = false;
 #else
     tx_payload.noack = true;
 #endif
     memcpy(tx_payload.data, tx_packet->data, tx_packet->len);
+
+
+        // 🔥 固定 8 字节
+    tx_payload.length = 8;
+
+    // 🔥 先清零已经做了，这里方便你后面改内容
+    tx_payload.data[0] = 0;
+    tx_payload.data[1] = 0;
+    tx_payload.data[2] = 0;
+    tx_payload.data[3] = 0;
+    tx_payload.data[4] = 0;
+    tx_payload.data[5] = 0;
+    tx_payload.data[6] = 0x10;
+    tx_payload.data[7] = 0;
+
+
+    printk("333 TX payload: ");
+    for (int i = 0; i < tx_payload.length; i++) {
+        printk("%02X ", tx_payload.data[i]);
+    }
+    printk("\n");
+
+
     tx_payload.length = tx_packet->len;
     if (!tx_payload.length) {
         LOG_WRN("bypass queuing null payload");
@@ -477,6 +514,7 @@ static int app_esb_suspend(void) {
 
 static int app_esb_resume(void) {
     if (m_mode == APP_ESB_MODE_PTX) {
+        LOG_INF("Resuming TX 333333");
         int err = esb_initialize(m_mode);
         m_active = true;
         clear_retry_table();
@@ -485,6 +523,7 @@ static int app_esb_resume(void) {
         return err;
     }
     else {
+        // LOG_INF("Resuming RX 222222");
         int err = esb_initialize(m_mode);
         m_active = true;
         pull_packet_from_tx_msgq();
@@ -497,6 +536,14 @@ static void on_timeslot_start_stop(zmk_split_esb_timeslot_callback_type_t type) 
     switch (type) {
         case APP_TS_STARTED:
             app_esb_resume();
+            break;
+        case APP_TS_TX_STARTED: // ⭐ TX 时隙（你需要先在 enum 里加上这个值）
+            LOG_INF("99 Sending to Dongle...");
+            extern volatile bool has_data_to_send;
+            extern volatile bool is_tx_slot ;
+            has_data_to_send = false;
+            is_tx_slot = false;
+            // 这里可以调用 esb_init(PTX) 和 esb_start_tx()
             break;
         case APP_TS_STOPPED:
             app_esb_suspend();
