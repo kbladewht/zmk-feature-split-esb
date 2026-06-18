@@ -49,19 +49,19 @@ static mpsl_timeslot_request_t timeslot_request_earliest = {
     .request_type = MPSL_TIMESLOT_REQ_TYPE_EARLIEST,
     .params.earliest.hfclk = MPSL_TIMESLOT_HFCLK_CFG_NO_GUARANTEE,
     .params.earliest.priority = MPSL_TIMESLOT_PRIORITY_NORMAL,
-    .params.earliest.length_us = TIMESLOT_LENGTH_US,
-    .params.earliest.timeout_us = TIMESLOT_REQUEST_TIMEOUT_US
+    .params.earliest.length_us = 10000,
+    .params.earliest.timeout_us = 1000000
 };
 
 
-// ⭐ 新增：发送时隙的请求（可以短一点，比如 500us）
-static mpsl_timeslot_request_t tx_timeslot_request = {
-    .request_type = MPSL_TIMESLOT_REQ_TYPE_EARLIEST,
-    .params.earliest.hfclk = MPSL_TIMESLOT_HFCLK_CFG_NO_GUARANTEE,
-    .params.earliest.priority = MPSL_TIMESLOT_PRIORITY_NORMAL,
-    .params.earliest.length_us = 500, 
-    .params.earliest.timeout_us = 100000
-};
+// // ⭐ 新增：发送时隙的请求（可以短一点，比如 500us）
+// static mpsl_timeslot_request_t tx_timeslot_request = {
+//     .request_type = MPSL_TIMESLOT_REQ_TYPE_EARLIEST,
+//     .params.earliest.hfclk = MPSL_TIMESLOT_HFCLK_CFG_NO_GUARANTEE,
+//     .params.earliest.priority = MPSL_TIMESLOT_PRIORITY_NORMAL,
+//     .params.earliest.length_us = 5000, 
+//     .params.earliest.timeout_us = 100000
+// };
 
 
 static mpsl_timeslot_signal_return_param_t signal_callback_return_param;
@@ -102,6 +102,7 @@ uint32_t cnt = 0;
 // ⭐ 新增：状态标记和数据标志
  volatile bool is_tx_slot = false; // 当前是否是发送时隙
  volatile bool has_data_to_send = false; // 是否有数据要发给 Dongle
+ uint32_t t0;
 static mpsl_timeslot_signal_return_param_t *mpsl_timeslot_callback(mpsl_timeslot_session_id_t session_id, 
                                                                   uint32_t signal_type) {
     (void) session_id; // unused parameter
@@ -112,10 +113,11 @@ static mpsl_timeslot_signal_return_param_t *mpsl_timeslot_callback(mpsl_timeslot
     switch (signal_type) {
         case MPSL_TIMESLOT_SIGNAL_START:
             cnt++;
-            if(cnt % 200 == 0){
+            if(cnt % 800 == 0){
                 LOG_INF("6666 TS start - Mode: %s", is_tx_slot ? "TX" : "RX");
             }
-            
+            // LOG_ERR("ENTER TX SLOT");
+             t0 = k_cycle_get_32();
             signal_callback_return_param.callback_action = MPSL_TIMESLOT_SIGNAL_ACTION_NONE;
             p_ret_val = &signal_callback_return_param;
 
@@ -140,7 +142,7 @@ static mpsl_timeslot_signal_return_param_t *mpsl_timeslot_callback(mpsl_timeslot
             // ⭐ 关键：通知 app_esb 当前是 TX 还是 RX 模式
             if (is_tx_slot) {
                 m_callback(APP_TS_TX_STARTED); // 你需要在 app_esb.h 定义这个新事件s
-                // LOG_INF("6666 m_callback(APP_TS_TX_STARTED)");
+                LOG_INF("TRigger TX slot APP_TS_TX_STARTED");
                 
             } else {
                 m_callback(APP_TS_STARTED);
@@ -169,7 +171,7 @@ static mpsl_timeslot_signal_return_param_t *mpsl_timeslot_callback(mpsl_timeslot
                 extern volatile bool has_data_to_send;
                 if (has_data_to_send) {
                     is_tx_slot = true;
-                    LOG_INF("777 Stop extending RX to switch to TX");
+                    // LOG_INF("777 Stop extending RX to switch to TX");
                     signal_callback_return_param.callback_action = MPSL_TIMESLOT_SIGNAL_ACTION_EXTEND;
                     signal_callback_return_param.params.extend.length_us = TIMESLOT_LENGTH_US;	
                 } else {
@@ -305,7 +307,7 @@ static mpsl_timeslot_signal_return_param_t *mpsl_timeslot_callback(mpsl_timeslot
             break;
 
         case MPSL_TIMESLOT_SIGNAL_SESSION_CLOSED:
-            LOG_DBG("Session closed");
+            LOG_WRN("Session closed");
 
             signal_callback_return_param.callback_action = MPSL_TIMESLOT_SIGNAL_ACTION_NONE;
             p_ret_val = &signal_callback_return_param;

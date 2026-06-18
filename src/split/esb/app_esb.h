@@ -52,5 +52,6 @@ int zmk_split_esb_init(app_esb_mode_t mode, app_esb_callback_t callback);
 int zmk_split_esb_set_enable(bool enabled);
 
 int zmk_split_esb_send(app_esb_data_t *tx_packet);
-
+ int pull_packet_from_tx_msgq(void);
+  void clear_retry_table(void) ;
 #endif
