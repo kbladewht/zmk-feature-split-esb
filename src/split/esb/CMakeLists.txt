@@ -26,8 +26,8 @@ if(CONFIG_SOC_NRF5340_CPUAPP)
     )
 else ()
     # assume a 52 series board is selected
-    zephyr_library_sources(app_esb.c)
-    zephyr_library_sources(timeslot.c)
+    # zephyr_library_sources(app_esb.c)
+    # zephyr_library_sources(timeslot.c)
 endif()
 zephyr_library_include_directories(.)
 

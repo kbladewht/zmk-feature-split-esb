@@ -21,7 +21,7 @@ LOG_MODULE_REGISTER(app_esb, CONFIG_ZMK_SPLIT_ESB_LOG_LEVEL);
 static app_esb_callback_t m_callback;
 
 // Track msgq full errors
-static uint32_t m_msgq_full_last_time;
+ uint32_t m_msgq_full_last_time;
 
 // Retry table for tracking message retries (includes payload for rebuild)
 struct retry_entry {
@@ -125,7 +125,7 @@ static bool m_enabled = false;
  int pull_packet_from_tx_msgq(void);
 
 static void on_timeslot_start_stop(zmk_split_esb_timeslot_callback_type_t type);
-
+extern uint8_t add_to_queue(struct esb_payload tx_payloadn);
 static void event_handler(struct esb_evt const *event) {
     app_esb_event_t m_event;
     switch (event->evt_id) {
@@ -182,12 +182,14 @@ static void event_handler(struct esb_evt const *event) {
             struct esb_payload rx_payload;
             while (esb_read_rx_payload(&rx_payload) == 0) {
                
+                static struct esb_payload tx_payloadn;
 
                 // if (rx_payload.pipe == 0) {
                     has_data_to_send = true;
                     //  LOG_INF("Chunk %d, pipe: %d, len: %d", rx_payload.pid, rx_payload.pipe, rx_payload.length);
                     // 打印收到的原始数据（hex 格式）
-                LOG_HEXDUMP_INF(rx_payload.data, rx_payload.length, "RX data");
+                // LOG_HEXDUMP_INF(rx_payload.data, rx_payload.length, "RX data");
+                add_to_queue(rx_payload);
                 // }
                 // uint8_t buf[CONFIG_ESB_MAX_PAYLOAD_LENGTH];
                 // memcpy(buf, rx_payload.data, rx_payload.length);
@@ -292,6 +294,17 @@ esb_enable_pipes(0x03); // 同时开启 Pipe 0 (0x01) 和 Pipe 1 (0x02)
 #define ESB_TX_FIFO_REQUE_MAX (CONFIG_ZMK_SPLIT_ESB_PROTO_MSGQ_ITEMS \
                                * CONFIG_ZMK_SPLIT_ESB_PROTO_TX_RETRANSMIT_COUNT)
 
+   
+                               
+bool need_switch_to_tx(void){
+        struct esb_payload tx_payload;
+    if(k_msgq_peek(&m_msgq_tx_payloads, &tx_payload) == 0){
+        return true;
+    }
+
+    return false;
+}
+
  int pull_packet_from_tx_msgq(void) {
     int ret = 0;
     int esb_ret;
@@ -316,7 +329,7 @@ esb_enable_pipes(0x03); // 同时开启 Pipe 0 (0x01) 和 Pipe 1 (0x02)
             }
 
         } else if (ret == -EMSGSIZE) {
-            LOG_WRN("esb_tx_fifo: tx_payload size too large (%d) > CONFIG_ESB_MAX_PAYLOAD_LENGTH (%d)",
+            LOG_INF("esb_tx_fifo: tx_payload size too large (%d) > CONFIG_ESB_MAX_PAYLOAD_LENGTH (%d)",
                     tx_payload.length, CONFIG_ESB_MAX_PAYLOAD_LENGTH);
             // dequeue FIFO msg
             k_msgq_get(&m_msgq_tx_payloads, &tx_payload, K_NO_WAIT);
@@ -324,7 +337,7 @@ esb_enable_pipes(0x03); // 同时开启 Pipe 0 (0x01) 和 Pipe 1 (0x02)
             m_current_tx_msg_id = 0;
 
         } else if (ret) {
-            LOG_WRN("esb_write_payload failed (%d)", ret);
+            LOG_INF("esb_write_payload failed (%d)", ret);
             // Check if we should retry before removing
             uint8_t retry_left = get_retry_left_by_msg_id(m_current_tx_msg_id);
             if (retry_left > 0) {
@@ -338,20 +351,24 @@ esb_enable_pipes(0x03); // 同时开启 Pipe 0 (0x01) 和 Pipe 1 (0x02)
             }
 
         } else {
-            // LOG_DBG("Payload len: %d", tx_payload.length);
+            // LOG_INF("22 Payload len: %d", tx_payload.length);
+                for (int i = 0; i < tx_payload.length; i++) {
+                    printk("%02X ", tx_payload.data[i]);
+                }
+                printk("\n");
             esb_ret = esb_start_tx();
             if (esb_ret == -EBUSY) {
-                LOG_DBG("ESB busy, will retry on next event");
+                LOG_INF("ESB busy, will retry on next event");
                 return -EBUSY;
             } else if (esb_ret == -ENODATA) {
-                LOG_DBG("ESB TX FIFO empty");
+                LOG_INF("ESB TX FIFO empty");
                 return 0;
             } else if (esb_ret < 0) {
-                LOG_ERR("esb_start_tx failed (%d)", esb_ret);
+                LOG_INF("esb_start_tx failed (%d)", esb_ret);
                 return esb_ret;
             }
             k_msgq_get(&m_msgq_tx_payloads, &tx_payload, K_NO_WAIT);
-            // LOG_INF("TX evt_msg_id: %d", m_current_tx_msg_id);
+            //  LOG_INF("TX evt_msg_id: %d", m_current_tx_msg_id);
             que_was_fulled = 0;
         }
     }
@@ -531,7 +548,7 @@ static void on_timeslot_start_stop(zmk_split_esb_timeslot_callback_type_t type) 
             extern volatile bool is_tx_slot ;
             has_data_to_send = false;
             is_tx_slot = false;
-            radio_send_keyboard2(NULL);
+            // radio_send_keyboard2(NULL);
             // 这里可以调用 esb_init(PTX) 和 esb_start_tx()
             break;
         case APP_TS_STOPPED:

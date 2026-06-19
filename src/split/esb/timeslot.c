@@ -49,7 +49,7 @@ static mpsl_timeslot_request_t timeslot_request_earliest = {
     .request_type = MPSL_TIMESLOT_REQ_TYPE_EARLIEST,
     .params.earliest.hfclk = MPSL_TIMESLOT_HFCLK_CFG_NO_GUARANTEE,
     .params.earliest.priority = MPSL_TIMESLOT_PRIORITY_NORMAL,
-    .params.earliest.length_us = 10000,
+    .params.earliest.length_us = 50000,
     .params.earliest.timeout_us = 1000000
 };
 
@@ -99,10 +99,13 @@ static void set_timeslot_active_status(bool active) {
     }
 }
 uint32_t cnt = 0;
+extern  void radio_irq_handler(void);
+// extern void (*__ptr__radio_dynamic_irq_handler)(const void *args);
 // ⭐ 新增：状态标记和数据标志
  volatile bool is_tx_slot = false; // 当前是否是发送时隙
  volatile bool has_data_to_send = false; // 是否有数据要发给 Dongle
  uint32_t t0;
+ extern bool need_switch_to_tx(void);
 static mpsl_timeslot_signal_return_param_t *mpsl_timeslot_callback(mpsl_timeslot_session_id_t session_id, 
                                                                   uint32_t signal_type) {
     (void) session_id; // unused parameter
@@ -114,7 +117,7 @@ static mpsl_timeslot_signal_return_param_t *mpsl_timeslot_callback(mpsl_timeslot
         case MPSL_TIMESLOT_SIGNAL_START:
             cnt++;
             if(cnt % 800 == 0){
-                LOG_INF("6666 TS start - Mode: %s", is_tx_slot ? "TX" : "RX");
+                LOG_INF(" TS start - TIMER_EXPIRY_US_EARLY: %ld TIMER_EXPIRY_REQ %ld", TIMER_EXPIRY_US_EARLY,TIMER_EXPIRY_REQ);
             }
             // LOG_ERR("ENTER TX SLOT");
              t0 = k_cycle_get_32();
@@ -137,13 +140,13 @@ static mpsl_timeslot_signal_return_param_t *mpsl_timeslot_callback(mpsl_timeslot
             nrf_timer_cc_set(NRF_TIMER0, NRF_TIMER_CC_CHANNEL1, TIMER_EXPIRY_REQ);
             nrf_timer_int_enable(NRF_TIMER0, NRF_TIMER_INT_COMPARE1_MASK);
 
+            // if(need_switch_to_tx()){
 
-            
+            // }
             // ⭐ 关键：通知 app_esb 当前是 TX 还是 RX 模式
-            if (is_tx_slot) {
+            if (need_switch_to_tx()) {
                 m_callback(APP_TS_TX_STARTED); // 你需要在 app_esb.h 定义这个新事件s
-                LOG_INF("TRigger TX slot APP_TS_TX_STARTED");
-                
+                // LOG_INF("TRigger TX slot APP_TS_TX_STARTED");
             } else {
                 m_callback(APP_TS_STARTED);
             }
@@ -163,22 +166,8 @@ static mpsl_timeslot_signal_return_param_t *mpsl_timeslot_callback(mpsl_timeslot
                 nrf_timer_int_disable(NRF_TIMER0, NRF_TIMER_INT_COMPARE0_MASK);
                 nrf_timer_event_clear(NRF_TIMER0, NRF_TIMER_EVENT_COMPARE0);
 
-                // signal_callback_return_param.callback_action = MPSL_TIMESLOT_SIGNAL_ACTION_EXTEND;
-                // signal_callback_return_param.params.extend.length_us = TIMESLOT_LENGTH_US;	
-
-
-                 // ⭐ 修改：如果有数据要发给 Dongle，就不再续期，让时隙自然结束进入 IDLE
-                extern volatile bool has_data_to_send;
-                if (has_data_to_send) {
-                    is_tx_slot = true;
-                    // LOG_INF("777 Stop extending RX to switch to TX");
-                    signal_callback_return_param.callback_action = MPSL_TIMESLOT_SIGNAL_ACTION_EXTEND;
-                    signal_callback_return_param.params.extend.length_us = TIMESLOT_LENGTH_US;	
-                } else {
-                    signal_callback_return_param.callback_action = MPSL_TIMESLOT_SIGNAL_ACTION_EXTEND;
-                    signal_callback_return_param.params.extend.length_us = TIMESLOT_LENGTH_US;	
-                }
-
+                signal_callback_return_param.callback_action = MPSL_TIMESLOT_SIGNAL_ACTION_EXTEND;
+                signal_callback_return_param.params.extend.length_us = TIMESLOT_LENGTH_US;	
             }
             else if(nrf_timer_event_check(NRF_TIMER0, NRF_TIMER_EVENT_COMPARE1)) {
                 nrf_timer_int_disable(NRF_TIMER0, NRF_TIMER_INT_COMPARE1_MASK);
@@ -189,6 +178,7 @@ static mpsl_timeslot_signal_return_param_t *mpsl_timeslot_callback(mpsl_timeslot
                     signal_callback_return_param.params.request.p_next = &timeslot_request_earliest;
                 } else {
                     signal_callback_return_param.callback_action = MPSL_TIMESLOT_SIGNAL_ACTION_NONE;
+                    LOG_INF("MPSL_TIMESLOT_SIGNAL_ACTION_NONE 222");
                 }
             }
             p_ret_val = &signal_callback_return_param;
@@ -219,7 +209,7 @@ static mpsl_timeslot_signal_return_param_t *mpsl_timeslot_callback(mpsl_timeslot
             break;
 
         case MPSL_TIMESLOT_SIGNAL_EXTEND_FAILED:
-            LOG_DBG("Extend failed");	
+            // LOG_INF("Extend failed");	
             signal_callback_return_param.callback_action = MPSL_TIMESLOT_SIGNAL_ACTION_NONE;
             timeslot_extension_failed = true;
             p_ret_val = &signal_callback_return_param;
@@ -228,13 +218,24 @@ static mpsl_timeslot_signal_return_param_t *mpsl_timeslot_callback(mpsl_timeslot
 
         case MPSL_TIMESLOT_SIGNAL_RADIO:
             // LOG_DBG("radio");
+            // LOG_INF("SIGNAL_RADIO received, in_timeslot=%d\n", m_in_timeslot);
             signal_callback_return_param.callback_action = MPSL_TIMESLOT_SIGNAL_ACTION_NONE;
             p_ret_val = &signal_callback_return_param;
 
             // We have to manually call the RADIO IRQ handler when the RADIO signal occurs
             if(m_in_timeslot) {
+                //  LOG_INF("Calling radio_irq_handler\n");
                 radio_irq_handler_t radio_irq_handler = (radio_irq_handler_t)__ptr__radio_dynamic_irq_handler;
                 radio_irq_handler(NULL);
+
+                
+                // if (__ptr__radio_dynamic_irq_handler) {
+                //     ((void (*)(const void *))__ptr__radio_dynamic_irq_handler)(NULL);
+                //     LOG_INF("radio_irq_handler returned\n");
+                // }
+                // extern void radio_irq_handler(void);
+                // radio_irq_handler();
+                
             } else {
                 NVIC_ClearPendingIRQ(RADIO_IRQn);
                 NVIC_DisableIRQ(RADIO_IRQn);
