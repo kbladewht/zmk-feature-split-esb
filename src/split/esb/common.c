@@ -81,7 +81,7 @@ void zmk_split_esb_cb(app_esb_event_t *event, struct zmk_split_esb_state *state)
             }
             break;
         case APP_ESB_EVT_RX:
-            // LOG_DBG("ESB RX received: {%d} %d", event->pipe, event->data_length);
+             LOG_INF("8888 ESB RX received: {%d} %d", event->pipe, event->data_length);
 
             struct ring_buf *rx_buf = &state->rx_bufs[event->pipe];
 
@@ -97,6 +97,7 @@ void zmk_split_esb_cb(app_esb_event_t *event, struct zmk_split_esb_state *state)
                 LOG_ERR("RX overrun! %d < %d", received, event->data_length);
                 break;
             }
+            LOG_INF("999 ESB RX received: {%d} %d", event->pipe, event->data_length);
 
             // LOG_DBG("RX + %3d and now buffer is %3d", received, ring_buf_size_get(&rx_buf));
             if (state->process_rx_callback) {

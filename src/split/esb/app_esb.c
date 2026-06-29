@@ -310,14 +310,15 @@ static int pull_packet_from_tx_msgq(void) {
     static uint8_t que_was_fulled = 0;
 
     if (!esb_is_idle()) {
+        // LOG_INF("qqqq esb_tx_fifo: cannot pull packet from msgq, radio is busy");
         return -EBUSY;
     }
 
     if (k_msgq_peek(&m_msgq_tx_payloads, &tx_payload) == 0) {
         ret = esb_write_payload(&tx_payload);
-
+        LOG_INF("wwww esb_write_payload ret %d",ret);
         if (ret == -ENOMEM) {
-            // LOG_WRN("esb_tx_fifo: queue full %d", que_was_fulled);
+            LOG_WRN("esb_tx_fifo: queue full %d", que_was_fulled);
             // force dequeue, guarding for phantom PRX.
             que_was_fulled++;
             if (que_was_fulled >= ESB_TX_FIFO_REQUE_MAX) {
@@ -349,19 +350,24 @@ static int pull_packet_from_tx_msgq(void) {
             }
 
         } else {
-            // LOG_DBG("Payload len: %d", tx_payload.length);
+            LOG_INF("222 Payload len: %d", tx_payload.length);
             esb_ret = esb_start_tx();
+            LOG_INF("888 Payload len: %d", tx_payload.length);
             if (esb_ret == -EBUSY) {
-                LOG_DBG("ESB busy, will retry on next event");
+                LOG_INF("9999 ESB busy, will retry on next event");
                 return -EBUSY;
             } else if (esb_ret == -ENODATA) {
-                LOG_DBG("ESB TX FIFO empty");
+                LOG_INF("ESB TX FIFO empty");
                 return 0;
             } else if (esb_ret < 0) {
-                LOG_ERR("esb_start_tx failed (%d)", esb_ret);
+                LOG_INF("esb_start_tx failed (%d)", esb_ret);
                 return esb_ret;
+            }else { 
+                LOG_INF("Good send esb_start_tx ret %d",esb_ret);
             }
+            LOG_INF("000 Payload len: %d", tx_payload.length);
             k_msgq_get(&m_msgq_tx_payloads, &tx_payload, K_NO_WAIT);
+            LOG_INF("999 Payload len: %d", tx_payload.length);
             // LOG_INF("TX evt_msg_id: %d", m_current_tx_msg_id);
             que_was_fulled = 0;
         }
@@ -477,6 +483,7 @@ static int app_esb_suspend(void) {
 
 static int app_esb_resume(void) {
     if (m_mode == APP_ESB_MODE_PTX) {
+        LOG_INF("7777 ESB resume PTX");
         int err = esb_initialize(m_mode);
         m_active = true;
         clear_retry_table();
@@ -485,6 +492,7 @@ static int app_esb_resume(void) {
         return err;
     }
     else {
+        LOG_INF("88888 ESB resume RX");
         int err = esb_initialize(m_mode);
         m_active = true;
         pull_packet_from_tx_msgq();

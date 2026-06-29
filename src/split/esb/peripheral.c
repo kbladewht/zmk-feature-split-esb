@@ -211,6 +211,7 @@ static int zmk_split_esb_peripheral_init(void) {
 SYS_INIT(zmk_split_esb_peripheral_init, APPLICATION, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT);
 
 static void process_rx_work_cb(struct k_work *work) {
+    
     for (int pipe = 0; pipe < CONFIG_ESB_PIPE_COUNT; pipe++) {
         struct ring_buf *rx_buf = &state.rx_bufs[pipe];
         while (ring_buf_size_get(rx_buf) > ESB_MSG_EXTRA_SIZE) {

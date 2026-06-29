@@ -75,7 +75,6 @@ static int split_central_esb_send_command(uint8_t source,
         LOG_WRN("Failed to determine payload data size %d", data_size);
         return data_size;
     }
-
     size_t payload_size = data_size
                         + sizeof(source)
                         + sizeof(enum zmk_split_transport_central_command_type);
@@ -99,7 +98,6 @@ static int split_central_esb_send_command(uint8_t source,
 
     size_t cmd_env_len = sizeof(env.prefix) + payload_size;
     // LOG_HEXDUMP_DBG(&env, cmd_env_len, "Payload");
-
     size_t put = ring_buf_put(&tx_buf, (uint8_t *)&env, cmd_env_len);
     if (put != cmd_env_len) {
         LOG_WRN("Failed to put the whole message (%d vs %d)", put, cmd_env_len);
@@ -126,8 +124,9 @@ static int split_central_esb_send_command(uint8_t source,
         LOG_WRN("Failed to put the meta (%d vs %d)", put, sizeof(meta));
     }
 
+    LOG_INF("2222 split_central_esb_send_command begin_tx %d to the peripheral %d", cmd.type, source);
     begin_tx();
-
+    LOG_INF("3333 begin_tx %d to the peripheral %d", cmd.type, source);
     return 0;
 }
 
@@ -201,6 +200,7 @@ SYS_INIT(zmk_split_esb_central_init, APPLICATION, CONFIG_KERNEL_INIT_PRIORITY_DE
 extern const struct zmk_split_transport_central *active_transport;
 
 static void process_rx_work_cb(struct k_work *work) {
+    LOG_INF("999_2 Processing RX work");
     for (int pipe = 0; pipe < CONFIG_ESB_PIPE_COUNT; pipe++) {
         struct ring_buf *rx_buf = &state.rx_bufs[pipe];
         while (ring_buf_size_get(rx_buf) > ESB_MSG_EXTRA_SIZE) {
@@ -210,12 +210,12 @@ static void process_rx_work_cb(struct k_work *work) {
             switch (item_err) {
             case 0:
                 if (&esb_central == active_transport) {
-
+                    LOG_INF("999_3 Processing RX work");
                     static uint8_t key_pos_states[(CONFIG_ZMK_SPLIT_ESB_AUTO_HEAL_KEY_POS_MAX + 8) / 8];
                     struct zmk_split_transport_peripheral_event ev = env.payload.event;
 
                     if (ev.type == ZMK_SPLIT_TRANSPORT_PERIPHERAL_EVENT_TYPE_KEY_POSITION_EVENT) {
-
+                        LOG_INF("999_4 Processing RX work");
                         uint8_t pressed = ev.data.key_position_event.pressed;
                         uint8_t position = ev.data.key_position_event.position;
 
@@ -230,10 +230,13 @@ static void process_rx_work_cb(struct k_work *work) {
                                         .timestamp = k_uptime_get()
                                     };
                                     raise_zmk_position_state_changed(state_ev);
+                                     LOG_INF("999_5 Processing RX work");
                                     k_sleep(K_MSEC(1));
                                 }
+                                 LOG_INF("999_6 pressed %d",pressed);
                                 key_pos_states[position / 8] |= 1 << (position % 8);
                             } else {
+                                 LOG_INF("999_7 presssed %d",pressed);
                                 key_pos_states[position / 8] &= ~(1 << (position % 8));
                             }
                         }
