@@ -91,6 +91,10 @@ CONFIG_ZMK_SPLIT_ESB_PERIPHERAL_ID=1
 #                CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING=y
 CONFIG_ZMK_SPLIT_ESB_PERIPHERAL_COUNT=0
 
+# enable ESB TX radio power +8dB gain (default opt-in)
+# NOTE: disable (=n) to search for spots of the weakest signal around you setup
+CONFIG_ZMK_SPLIT_ESB_CTLR_TX_PWR_PLUS_8=y
+
 # enable ESB TX send request packet payload with ACK bit
 # ESB protocol has built-in retransmit counter (default one), if RX does not response ACK properly.
 # disable this iif you are pursuing extreme low latency, not much different in real-life.
